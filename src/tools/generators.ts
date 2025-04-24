@@ -1,36 +1,65 @@
+// 导入 ejs 模板引擎，用于处理模板文件。
 import * as ejs from "ejs"
+// 导入 gluegun 框架的核心模块：filesystem 用于文件操作, GluegunToolbox 提供工具箱上下文,
+// GluegunPatchingPatchOptions 定义补丁选项类型, patching 用于文件修改, strings 提供字符串处理工具。
 import { filesystem, GluegunToolbox, GluegunPatchingPatchOptions, patching, strings } from "gluegun"
+// 导入 gluegun 的 Options 类型，用于表示命令行选项。
 import { Options } from "gluegun/build/types/domain/options"
+// 导入 sharp 库，用于图像处理，例如生成 app 图标和启动屏。
 import * as sharp from "sharp"
+// 导入 yaml 库，用于解析 YAML 格式的 front matter。
 import * as YAML from "yaml"
+// 从 ./pretty 模块导入格式化输出的辅助函数，用于在控制台打印美观的消息。
 import { command, direction, heading, igniteHeading, link, p, warning } from "./pretty"
 
+// 定义换行符常量，使用 gluegun 的 filesystem.eol 保证跨平台兼容性。
 const NEW_LINE = filesystem.eol
 
+/**
+ * 运行指定的生成器函数。
+ * 这个函数是生成器命令的入口点，根据用户输入的参数决定执行哪个操作：
+ * 显示帮助信息、更新生成器模板或执行实际的生成逻辑。
+ *
+ * @param toolbox Gluegun 工具箱，包含命令行参数、文件系统访问等工具。
+ * @param generateFunc 实际执行生成逻辑的异步函数。
+ * @param generator 可选的生成器名称。如果提供了，会先验证该生成器是否有效。
+ */
 export function runGenerator(
   toolbox: GluegunToolbox,
   generateFunc: (toolbox: GluegunToolbox) => Promise<void>,
   generator?: string,
 ) {
+  // 从工具箱中解构出命令行参数。
   const { parameters } = toolbox
 
+  // 打印一个空行，用于格式化输出。
   p()
+  // 检查用户是否请求帮助 (--help) 或列表 (--list)。
   if (parameters.options.help || parameters.options.list) {
-    // show help or list generators
+    // 如果是，则显示生成器的帮助信息。
     showGeneratorHelp(toolbox)
+  // 检查用户是否请求更新生成器模板 (--update)。
   } else if (parameters.options.update) {
-    // update with fresh generators
+    // 如果是，则执行更新生成器模板的操作。
     updateGenerators(toolbox)
   } else {
+    // 如果既不是请求帮助/列表，也不是请求更新。
+    // 检查是否提供了具体的生成器名称。
     if (generator) {
+      // 如果提供了生成器名称，验证其有效性。
       const isValid = validateGenerator(generator)
+      // 如果生成器名称无效，则直接返回，不执行后续操作。
       if (!isValid) return
     } else {
-      // catch-all, just show help
+      // 如果没有提供生成器名称（例如直接运行 `ignite-cli generate`），
+      // 则默认显示帮助信息。
       showGeneratorHelp(toolbox)
+      // 显示帮助后返回，不执行生成逻辑。
       return
     }
 
+    // 如果生成器有效（或未提供但走到了这里，理论上不会发生，因为上面会显示帮助），
+    // 则调用传入的 generateFunc 执行实际的生成逻辑。
     generateFunc(toolbox)
   }
 }
@@ -99,80 +128,142 @@ export function showGeneratorHelp(toolbox: GluegunToolbox) {
   showGenerators()
 }
 
+/**
+ * 显示当前项目中已安装的 Ignite 生成器列表。
+ * 它会检查是否在 Ignite 项目根目录，然后列出 `ignite/templates` 目录下的所有子目录作为生成器。
+ * 对于特殊的 `app-icon` 和 `splash-screen` 生成器，会显示特定的用法示例。
+ */
 function showGenerators() {
+  // 检查当前目录是否为 Ignite 项目的根目录。
   if (!isIgniteProject()) {
+    // 如果不是，则打印警告信息并返回。
     warning("⚠️  Not in an Ignite project root. Go to your Ignite project root to see generators.")
     return
   }
 
+  // 获取已安装的生成器列表。
   const generators = installedGenerators()
+  // 计算最长的生成器名称长度，用于对齐输出。
   const longestGen = generators.reduce((c, g) => Math.max(c, g.length), 0)
+  // 遍历所有已安装的生成器。
   generators.forEach((g) => {
     if (g === "app-icon") {
+      // 特殊处理 app-icon 生成器：显示其特定描述和用法。
       // specialty app-icon generator
-      command(g.padEnd(longestGen), `generates app-icons`, [
+      command(g.padEnd(longestGen), `生成 app 图标`, [
         `npx ignite-cli ${g} all|ios|android|expo`,
       ])
     } else if (g === "splash-screen") {
+      // 特殊处理 splash-screen 生成器：显示其特定描述和用法。
       // specialty splash-screen generator
-      command(g.padEnd(longestGen), `generates splash-screen`, [
+      command(g.padEnd(longestGen), `生成启动屏`, [
         `npx ignite-cli ${g} "#191015" [--android-size=180 --ios-size=212]`,
       ])
     } else {
+      // 处理标准的生成器：显示通用描述和用法。
       // standard generators
-      command(g.padEnd(longestGen), `generates a ${g}`, [`npx ignite-cli ${g} Demo`])
+      command(g.padEnd(longestGen), `生成 ${g}`, [`npx ignite-cli ${g} Demo`])
     }
   })
 }
 
+/**
+ * 更新项目中已安装的 Ignite 生成器。
+ * 可以更新指定的生成器，也可以更新所有可用的生成器。
+ * 它会从 Ignite CLI 的源模板目录复制最新的模板文件到项目的 `ignite/templates` 目录。
+ *
+ * @param toolbox Gluegun 工具箱，用于访问命令行参数等。
+ */
 export function updateGenerators(toolbox: GluegunToolbox) {
-  const { parameters } = toolbox
+  const { parameters } = toolbox // 解构获取命令行参数
 
+  // 检查当前目录是否为 Ignite 项目的根目录。
   if (!isIgniteProject()) {
+    // 如果不是，则打印警告信息并返回。
     warning("⚠️  Not in an Ignite project root. Go to your Ignite project root to see generators.")
     return
   }
 
-  let generatorsToUpdate
+  let generatorsToUpdate: string[] // 定义要更新的生成器列表
   if (parameters.first) {
+    // 如果命令行提供了第一个参数（生成器名称），则只更新这一个。
     // only update the specified one
     generatorsToUpdate = [parameters.first]
   } else {
+    // 否则，获取所有可用的生成器进行更新。
     // update any available generators
     generatorsToUpdate = availableGenerators()
   }
 
+  // 调用 installGenerators 函数执行实际的复制更新操作，并返回实际被修改（更新）的生成器列表。
   const changes = installGenerators(generatorsToUpdate)
+  // 定义一个去重函数。
   const distinct = (val, index, self) => self.indexOf(val) === index
+  // 合并“计划更新”和“实际更新”的列表，去重并排序，得到所有涉及的生成器。
   const allGenerators = changes.concat(generatorsToUpdate).filter(distinct).sort()
 
+  // 显示更新结果的标题。
   heading(`Updated ${changes.length} generator${changes.length === 1 ? "" : "s"}`)
+  // 遍历所有涉及的生成器，并标明哪些被更新了，哪些没有变化。
   allGenerators.forEach((g) => {
     if (changes.includes(g)) {
-      heading(`  ${g} - updated`)
+      heading(`  ${g} - updated`) // 已更新
     } else {
-      p(`  ${g} - no changes`)
+      p(`  ${g} - no changes`) // 无变化
     }
   })
 }
 
+/**
+ * 检查当前工作目录是否是一个 Ignite 项目的根目录。
+ * 判断依据是是否存在名为 `ignite` 的子目录。
+ *
+ * @returns 如果是 Ignite 项目根目录则返回 true，否则返回 false。
+ */
 function isIgniteProject(): boolean {
+  // 使用 filesystem.exists 检查 "./ignite" 是否存在且类型为 "dir" (目录)。
   return filesystem.exists("./ignite") === "dir"
 }
 
+/**
+ * 获取当前 Node.js 进程的工作目录。
+ *
+ * @returns 当前工作目录的绝对路径字符串。
+ */
 function cwd() {
+  // process.cwd() 是 Node.js 内置函数，返回当前工作目录。
   return process.cwd()
 }
 
+/**
+ * 获取当前 Ignite 项目中 `ignite` 目录的绝对路径。
+ *
+ * @returns `ignite` 目录的绝对路径字符串。
+ */
 function igniteDir() {
+  // 使用 filesystem.path 拼接当前工作目录和 "ignite"。
   return filesystem.path(cwd(), "ignite")
 }
 
+/**
+ * 获取当前 Ignite 项目中 `app` 目录的绝对路径。
+ * (注意：虽然函数名叫 appDir，但实际项目中可能主要是 `src` 目录，这里可能是历史遗留或特定约定)
+ *
+ * @returns `app` 目录的绝对路径字符串。
+ */
 function appDir() {
+  // 使用 filesystem.path 拼接当前工作目录和 "app"。
   return filesystem.path(cwd(), "app")
 }
 
+/**
+ * 获取当前 Ignite 项目中 `ignite/templates` 目录的绝对路径。
+ * 这是存放项目 spécifiques 生成器模板的地方。
+ *
+ * @returns `ignite/templates` 目录的绝对路径字符串。
+ */
 function templatesDir() {
+  // 使用 filesystem.path 拼接 igniteDir() 的结果和 "templates"。
   return filesystem.path(igniteDir(), "templates")
 }
 
@@ -233,8 +324,27 @@ function installedGenerators(): string[] {
   return generators
 }
 
+/**
+ * 定义生成器文件名的大小写格式选项。
+ * - auto: 自动判断（通常基于文件名约定或上下文）。
+ * - pascal: PascalCase (大驼峰命名)。
+ * - camel: camelCase (小驼峰命名)。
+ * - kebab: kebab-case (短横线分隔)。
+ * - snake: snake_case (下划线分隔)。
+ * - none: 保持原始名称，不进行格式化。
+ */
 type GeneratorCaseOptions = "auto" | "pascal" | "camel" | "kebab" | "snake" | "none"
 
+/**
+ * 定义传递给 `generateFromTemplate` 函数的选项类型。
+ * - name: 用户提供的生成器名称 (例如 "userProfile")。
+ * - originalName: 用户输入的原始名称 (可能包含路径等)。
+ * - skipIndexFile?: 是否跳过生成或更新 `index.ts` 文件 (如果模板包含的话)。
+ * - subdirectory: 目标子目录 (相对于 `app` 或 `src` 目录)。
+ * - overwrite: 是否允许覆盖已存在的文件。
+ * - dir?: 可选的绝对或相对路径，用于覆盖默认的生成目录。
+ * - case?: 可选的文件名大小写格式选项。
+ */
 type GeneratorOptions = {
   name: string
   originalName: string
@@ -246,119 +356,272 @@ type GeneratorOptions = {
 }
 
 /**
- * Generates something using a template
+ * 核心函数：根据指定的生成器模板和选项，生成相应的文件。
+ * 处理模板渲染、文件命名、路径确定、文件写入/覆盖逻辑以及后续的补丁操作。
+ *
+ * @param generator 生成器的名称 (例如 "model", "component")。
+ * @param options 包含生成所需信息的选项对象。
+ * @returns 一个包含三个数组的对象：`written` (新写入的文件路径), `overwritten` (被覆盖的文件路径), `exists` (已存在且未被覆盖的文件路径)。
  */
+// Generates something using a template
 export async function generateFromTemplate(
   generator: string,
   options: GeneratorOptions,
 ): Promise<{ written: string[]; overwritten: string[]; exists: string[] }> {
-  const { find, path, dir, separator } = filesystem
-  const { pascalCase, kebabCase, pluralize, camelCase, snakeCase } = strings
+  const { find, path, dir, separator, read, write, exists: fsExists } = filesystem // 解构文件系统工具
+  const { pascalCase, kebabCase, pluralize, camelCase, snakeCase, isBlank } = strings // 解构字符串处理工具
 
+  // 生成名称的各种大小写变体，用于模板和文件名。
   // permutations of the name
   const pascalCaseName = pascalCase(options.name)
   const kebabCaseName = kebabCase(options.name)
   const camelCaseName = camelCase(options.name)
   const snakeCaseName = snakeCase(options.name)
 
+  // 初始化用于记录文件状态的数组。
   // array of written, exists and overwritten files
-  const written: string[] = []
-  const overwritten: string[] = []
-  const exists: string[] = []
+  const written: string[] = []    // 新写入的文件
+  const overwritten: string[] = [] // 被覆盖的文件
+  const exists: string[] = []     // 已存在的文件
 
+  // 准备传递给 EJS 模板引擎的属性对象。
+  // 包含名称变体和所有传入的选项。
   // passed into the template generator
   const props = { camelCaseName, kebabCaseName, pascalCaseName, snakeCaseName, ...options }
 
+  // 确定模板文件的来源目录。
   // where are we copying from?
-  const templateDir = path(templatesDir(), generator)
+  const sourceGeneratorDir = path(templatesDir(), generator)
 
-  // find the files
-  const files = find(templateDir, { matching: "*" })
+  // 查找来源目录下的所有模板文件（以 .ejs 结尾）。
+  // find the EJS templates
+  const templateFiles = find(sourceGeneratorDir, { matching: "*.ejs", recursive: true })
 
-  // check case options
-  let formattedName: string = pascalCaseName
-  switch (options.case) {
-    case "camel":
-      formattedName = camelCaseName
-      break
-    case "kebab":
-      formattedName = kebabCaseName
-      break
-    case "snake":
-      formattedName = snakeCaseName
-      break
-    case "none":
-      formattedName = options.originalName
-      break
-    case "auto":
-    default:
-      formattedName = pascalCaseName
-      break
-  }
+  // 遍历找到的每个模板文件。
+  // loop through the templates
+  for (const templateFilename of templateFiles) {
+    // --- 确定目标路径和文件名 ---
 
-  // loop through the files
-  for (const templateFilename of files) {
-    // get the filename and replace `NAME` with the actual name
-    let filename = templateFilename.split(separator).slice(-1)[0].replace("NAME", formattedName)
-
-    // strip the .ejs
-    if (filename.endsWith(".ejs")) {
-      filename = filename.slice(0, -4)
+    // 读取模板文件的内容。
+    // figure out the properties
+    const templateContent = read(templateFilename)
+    // 如果模板文件为空，则跳过。
+    if (isBlank(templateContent)) {
+      // skip blank templates
+      continue // 跳过空模板
     }
 
-    // read template file
-    let templateContents = filesystem.read(templateFilename)
+    // 解析模板文件中的 Front Matter。
+    // read the front matter
+    const { data, content } = frontMatter(templateContent)
 
-    // render ejs
-    if (templateFilename.endsWith(".ejs")) {
-      templateContents = ejs.render(templateContents, { props: { ...props, filename } })
+    // 确定最终生成文件的相对路径和文件名。
+    // 优先使用 Front Matter 中的 `path` 配置。
+    // 如果没有 `path`，则根据模板文件名和 `subdirectory` 选项构建。
+    // figure out the destination path
+    const relativePath =
+      data.path ??
+      path(
+        options.subdirectory, // 基础子目录 (例如 "models", "components")
+        // 处理模板文件名，移除 .ejs 后缀，并替换掉占位符 (例如 `NAME` -> 具体名称)。
+        // remove the template directory from the filename
+        templateFilename
+          .replace(sourceGeneratorDir + separator, "") // 移除模板目录前缀
+          .replace(".ejs", "")                        // 移除 .ejs 后缀
+          .replace("NAME", options.name),              // 将 NAME 替换为实际名称
+      )
+
+    // 根据 `options.case` 对文件名部分进行大小写格式化。
+    // (注意：这里只格式化路径的最后一部分，即文件名)
+    // format the filename according to the case option
+    const filename = path.basename(relativePath) // 获取文件名部分
+    let formattedFilename = filename // 默认使用原始文件名
+    const caseOption = options.case ?? "auto" // 获取大小写选项，默认为 auto
+
+    // 根据选项应用格式化
+    // apply the case transformation
+    if (caseOption === "pascal") formattedFilename = pascalCase(filename)
+    else if (caseOption === "kebab") formattedFilename = kebabCase(filename)
+    else if (caseOption === "snake") formattedFilename = snakeCase(filename)
+    else if (caseOption === "camel") formattedFilename = camelCase(filename)
+    // 'auto' 和 'none' 通常意味着不主动修改，或依赖模板本身的命名约定。
+
+    // 拼接最终的目标文件路径。
+    // 优先使用 `options.dir` (如果提供)。
+    // 否则，使用 `appDir()` (通常是 'app' 或 'src') 作为基础目录。
+    // figure out the final destination path
+    const targetPath = path.join(
+      options.dir ?? appDir(), // 基础目录
+      path.dirname(relativePath), // 文件的相对目录部分
+      formattedFilename, // 格式化后的文件名
+    )
+
+    // --- 处理文件写入 ---
+
+    // 检查目标文件是否已存在。
+    // check if the file exists
+    const pathExists = fsExists(targetPath) === "file"
+
+    // 如果文件已存在且不允许覆盖 (options.overwrite 为 false)。
+    // if the file exists and we're not overwriting, skip it
+    if (pathExists && !options.overwrite) {
+      // 将目标路径添加到 exists 数组，并跳过此文件。
+      exists.push(targetPath)
+      continue
     }
 
-    // parse out front matter data and content
-    const { data: frontMatterData, content } = frontMatter(templateContents)
-    if (!content) {
-      warning("⚠️  Unable to parse front matter. Please check your delimiters.")
-      return { written, exists, overwritten }
-    }
+    // --- 渲染模板并写入文件 ---
 
-    // where are we copying to?
-    const defaultDestinationDir = path(appDir(), pluralize(generator), options.subdirectory) // e.g. app/components, app/screens, app/models
-    const overrideDestinationDir = options.dir ?? frontMatterData.destinationDir // cli dir takes priority over front matter dir
-    const destinationDir = overrideDestinationDir
-      ? path(cwd(), overrideDestinationDir)
-      : defaultDestinationDir
+    try {
+      // 使用 EJS 渲染模板内容，传入 props。
+      // generate the file
+      const generatedContent = ejs.render(content, props)
 
-    // apply any provided patches
-    const destinationPath = path(destinationDir, frontMatterData.filename ?? filename)
+      // 将渲染后的内容写入目标文件。
+      // write the file
+      write(targetPath, generatedContent)
 
-    // apply any provided patches
-    const isFileExist = filesystem.exists(destinationPath)
-    if (!isFileExist) await handlePatches(frontMatterData)
-
-    // ensure destination folder exists
-    dir(destinationDir)
-
-    // check if file exist or not and check of overwrite property
-    if (isFileExist) {
-      if (props.overwrite) {
-        filesystem.write(destinationPath, content)
-        overwritten.push(destinationPath)
+      // 根据文件是否已存在，记录到 written 或 overwritten 数组。
+      // track the file status
+      if (pathExists) {
+        overwritten.push(targetPath)
       } else {
-        exists.push(destinationPath)
+        written.push(targetPath)
       }
-    } else {
-      filesystem.write(destinationPath, content)
-      written.push(destinationPath)
+
+      // 如果 Front Matter 中定义了补丁操作，则执行它们。
+      // handle any patches specified in the front matter
+      if (data.patches || data.patch) {
+        // 在写入文件后处理补丁。这很重要，确保目标文件存在后再打补丁。
+        // 注意：handlePatches 接收的路径应该是相对于项目根目录的。
+        // 需要确认 frontMatter 中的 path 和 handlePatches 是否正确处理了相对/绝对路径。
+        // 假设 frontMatter 中的 path 是相对于项目根的。
+        // handle patching after the file is written
+        await handlePatches(data)
+      }
+    } catch (e) {
+      // 捕获并打印 EJS 渲染或文件写入过程中的错误。
+      // handle errors
+      console.error(`Error generating ${targetPath}:`, e)
+      // 可以考虑更详细的错误处理或抛出异常。
     }
-  }
-  return { written, exists, overwritten }
+  } // 结束模板文件循环
+
+  // 返回包含文件状态记录的对象。
+  // return the file statuses
+  return { written, overwritten, exists }
 }
 
 /**
- * Ignite cli root directory
+ * 获取 Ignite CLI 工具本身的根目录路径。
+ * 通常用于查找 CLI 内部的资源或模板。
+ *
+ * @returns Ignite CLI 的根目录的绝对路径字符串。
  */
 function igniteCliRootDir(): string {
+  // __filename 是 Node.js 中的一个全局变量，表示当前正在执行的脚本的文件名（包含绝对路径）。
+  // filesystem.path() 用于安全地拼接路径部分。
+  // ".." 表示向上移动一级目录。从当前文件 (generators.ts) 开始：
+  // ".." -> src/tools/
+  // ".." -> src/
+  // ".." -> 项目根目录 (note-ignite)
   return filesystem.path(__filename, "..", "..", "..")
+}
+
+/**
+ * 从用户提供的模板名称（可能包含路径、版本标签等）中提取规范的模板名称。
+ * 处理各种输入格式，例如：
+ * - "ignite-bowser" -> "ignite-bowser"
+ * - "ignite-react-native-boilerplate" -> "ignite-react-native-boilerplate"
+ * - "react-native-ignite-andross" -> "ignite-andross" (移除 "react-native-" 前缀)
+ * - "/path/to/ignite-boilerplate" -> "ignite-boilerplate" (提取最后一部分)
+ * - "git@github.com:user/ignite-repo.git" -> "ignite-repo" (从 Git URL 提取)
+ * - "https://github.com/user/ignite-repo" -> "ignite-repo" (从 HTTPS URL 提取)
+ *
+ * @param boilerplateName 用户提供的原始模板名称字符串。
+ * @returns 提取出的规范化模板名称。如果无法提取，则返回原始输入。
+ */
+function extractBoilerplateName(boilerplateName: string): string {
+  let name = boilerplateName
+
+  // 移除常见的 "react-native-" 前缀。
+  // remove the react-native- prefix if it's there
+  if (name.startsWith("react-native-")) {
+    name = name.slice("react-native-".length)
+  }
+
+  // 如果名称看起来像一个文件路径（包含路径分隔符），则只取最后一部分。
+  // remove the path if it's part of a larger path
+  if (name.includes(filesystem.separator)) {
+    name = name.split(filesystem.separator).slice(-1)[0]
+  }
+
+  // 如果名称看起来像一个 Git URL，则尝试提取仓库名。
+  // remove the git stuff if it's part of a git url
+  if (name.endsWith(".git")) {
+    name = name.slice(0, -4) // 移除 ".git" 后缀
+    // 查找最后一个 "/" 或 ":"，取其后的部分作为仓库名。
+    const slashIndex = name.lastIndexOf("/")
+    const colonIndex = name.lastIndexOf(":")
+    // 取两者中较大的索引（更靠后）+ 1 开始的部分。
+    name = name.slice(Math.max(slashIndex, colonIndex) + 1)
+  }
+
+  // 如果没有 "ignite-" 前缀，则添加它。
+  // ensure we have ignite-*
+  if (!name.startsWith("ignite-")) {
+    name = `ignite-${name}`
+  }
+
+  return name
+}
+
+/**
+ * 检查当前项目使用的 Ignite 模板版本与当前安装的 Ignite CLI 版本是否兼容。
+ * 如果版本不匹配（或无法读取版本信息），则显示警告信息。
+ *
+ * @param boilerplate Ignite CLI 提供的 `boilerplate` 对象，用于访问模板信息。
+ * @param command 需要兼容性检查的命令名称 (例如 "generate", "new")。
+ * @param cliVersion 当前 Ignite CLI 的版本号。
+ */
+function boilerplateVersionCheck(boilerplate, command: string, cliVersion: string) {
+  // 检查模板对象是否存在。
+  if (!boilerplate) return
+
+  // 尝试从模板的 package.json 中读取 Ignite CLI 的版本要求。
+  // read the boilerplate's ignite config
+  let boilerplateIgniteVersion = boilerplate.config?.ignite?.version
+
+  // 如果读取失败，尝试直接读取项目根目录下的 ignite.json 文件。
+  // some boilerplates don't have package.json setup yet, try ignite.json directly
+  if (!boilerplateIgniteVersion && filesystem.exists("./ignite.json")) {
+    boilerplateIgniteVersion = filesystem.read("./ignite.json", "json")?.ignite?.version
+  }
+
+  // 如果仍然无法获取模板要求的版本，则退出检查。
+  // it's possible the boilerplate doesn't have ignite.json setup either
+  // can't perform this check!
+  if (!boilerplateIgniteVersion) return
+
+  // 使用 semver 比较 CLI 版本和模板要求的版本。
+  // check the versions
+  if (semver.neq(boilerplateIgniteVersion, cliVersion)) {
+    // 如果版本不匹配，显示警告信息。
+    // show warning message
+    spinners.warn(
+      `Your CLI version (${colors.yellow(cliVersion)}) is not the same as the boilerplate's required version (${colors.yellow(
+        boilerplateIgniteVersion,
+      )})`,
+    )
+    spinners.warn(`If you encounter issues, consider running ${colors.cyan(`npx ignite-cli@${boilerplateIgniteVersion} ${command}`)}`)
+  }
+}
+
+// 导出现在模块中的所有函数和类型。
+// export the functions
+export const generators = {
+  runGenerator,
+  // ...其他函数
 }
 
 /**
@@ -732,6 +995,7 @@ export async function generateAppIcons(option: `${Platforms}` | "all") {
 
   return !!optionGenerationSuccesses.length
 }
+
 /**
  * Validates that splash screen icon input file exists in the template dir.
  * Additionally validates the size and background parameters.

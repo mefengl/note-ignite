@@ -1,3 +1,45 @@
+## 代码阅读推荐顺序
+
+下面是推荐的代码阅读顺序，以帮助理解项目结构和核心功能。带星号(*)的文件表示尚未详细注释。
+
+1. **项目概览与配置:**
+    * [`package.json`](./package.json) (项目依赖、脚本)
+    * [`tsconfig.json`](./tsconfig.json) (TypeScript 配置)
+    * [`template.config.js`](./template.config.js) (模板相关配置)
+    * [`README.md`](./README.md) (项目介绍、快速开始 - 放在后面，因为它不是代码)
+
+2. **CLI 核心入口与命令:**
+    * [`src/cli.ts`](./src/cli.ts) (CLI 主入口文件)
+    * [`src/commands/ignite.ts`](./src/commands/ignite.ts) (根命令处理)
+    * [`src/commands/new.ts`](./src/commands/new.ts) (`new` 命令：创建新项目)
+    * [`src/commands/generate.ts`](./src/commands/generate.ts) (`generate` 命令：生成代码)
+    * [`src/commands/generate/app-icon.ts`](./src/commands/generate/app-icon.ts) (生成 App 图标)
+    * [`src/commands/generate/splash-screen.ts`](./src/commands/generate/splash-screen.ts) (生成启动屏)
+    * [`src/commands/doctor.ts`](./src/commands/doctor.ts) (`doctor` 命令：环境检查)
+    * [`src/commands/help.ts`](./src/commands/help.ts) (`help` 命令：显示帮助信息)
+    * [`src/commands/remove-demo.ts`](./src/commands/remove-demo.ts) (`remove-demo` 命令)
+    * [`src/commands/remove-mst.ts`](./src/commands/remove-mst.ts) (`remove-mst` 命令)
+    * [`src/commands/rename.ts`](./src/commands/rename.ts) (`rename` 命令)
+
+3. **CLI 工具与辅助函数:**
+    * [`src/tools/filesystem-ext.ts`](./src/tools/filesystem-ext.ts) (文件系统操作封装)
+    * [`src/tools/generators.ts`](./src/tools/generators.ts) (代码生成器工具)
+    * [`src/tools/packager.ts`](./src/tools/packager.ts) (包管理器交互)
+    * [`src/tools/spawn.ts`](./src/tools/spawn.ts) (执行子命令)
+    * [`src/tools/markup.ts`](./src/tools/markup.ts) (代码修改/标记处理)
+    * [`src/types.ts`](./src/types.ts) (TypeScript 类型定义)
+
+4. **文档与贡献指南:**
+    * [`docs/README.md`](./docs/README.md) (文档入口)
+    * [`docs/cli/Ignite-CLI.md`](./docs/cli/Ignite-CLI.md) (CLI 文档)
+    * [`docs/concept/Generators.md`](./docs/concept/Generators.md) (生成器概念)
+    * [`docs/contributing/Contributing-To-Ignite.md`](./docs/contributing/Contributing-To-Ignite.md) (贡献指南)
+
+5. **Boilerplate 模板核心文件 (基于可见部分):**
+    * [`boilerplate/package.json`](./boilerplate/package.json) (模板的项目依赖)
+
+---
+
 <p align="center"><img src="https://user-images.githubusercontent.com/1479215/206780298-2b98221d-9c57-4cd3-866a-cf85ec1ddd9e.jpg" alt="Ignite README Splash Image" /></p>
 
 # Ignite - the battle-tested React Native boilerplate
@@ -93,8 +135,8 @@ Ignite also comes with a [component library](./docs/boilerplate/app/components/C
 
 Prerequisites:
 
-- You'll need at least a recent version of [Node](https://nodejs.org/en) to run the CLI
-- For compiling/running in a simulator, make sure you're set up for React Native by following [the official documentation](https://reactnative.dev/docs/environment-setup).
+* You'll need at least a recent version of [Node](https://nodejs.org/en) to run the CLI
+* For compiling/running in a simulator, make sure you're set up for React Native by following [the official documentation](https://reactnative.dev/docs/environment-setup).
 
 The Ignite CLI will walk you through the steps to ignite a new React Native app:
 
@@ -114,12 +156,12 @@ If you'd like to follow a tutorial, check out [this one from Robin Heinze](https
 
 The above commands may fail with various errors, depending on your operating system and dependency versions. Some troubleshooting steps to follow:
 
-- Uninstall global versions of the Ignite CLI via `npm uninstall -g ignite-cli` and use the CLI via `npx ignite-cli`
-- Make sure you are using a reasonably recent version of Node. This can be checked via the `node --version` command. If you require multiple Node versions on your system, install `nvm`, and then run `nvm install --lts`. At the time of writing, Node LTS is v20.x.x.
-- If the installation fails because of an Xcode error (missing Xcode command line tools), the easiest way to install them is to run `sudo xcode-select --install` in your terminal.
-- If Xcode and command line tools are already installed, but the installation complains about missing patch dependencies, you may need to switch the Xcode location to something else: `sudo xcode-select -s /Applications/Xcode.app/Contents/Developer`
-- Opening the project in Xcode can give you other insights into what's happening: `open ./ios/<yourapp>.xcworkspace`
-- Add the `--debug` switch to the Ignite CLI new command to provide additional output during project initialization
+* Uninstall global versions of the Ignite CLI via `npm uninstall -g ignite-cli` and use the CLI via `npx ignite-cli`
+* Make sure you are using a reasonably recent version of Node. This can be checked via the `node --version` command. If you require multiple Node versions on your system, install `nvm`, and then run `nvm install --lts`. At the time of writing, Node LTS is v20.x.x.
+* If the installation fails because of an Xcode error (missing Xcode command line tools), the easiest way to install them is to run `sudo xcode-select --install` in your terminal.
+* If Xcode and command line tools are already installed, but the installation complains about missing patch dependencies, you may need to switch the Xcode location to something else: `sudo xcode-select -s /Applications/Xcode.app/Contents/Developer`
+* Opening the project in Xcode can give you other insights into what's happening: `open ./ios/<yourapp>.xcworkspace`
+* Add the `--debug` switch to the Ignite CLI new command to provide additional output during project initialization
 
 ## Reporting Bugs / Getting Help
 
@@ -145,9 +187,9 @@ Ready to see how we can work together? [Send us a message](https://infinite.red/
 
 ## Further Reading
 
-- Watch Jamon Holmgren's talk at React Live Amsterdam 2019 where he uses Ignite to build an app in less than 30 minutes: [https://www.youtube.com/watch?v=OgiFKMd_TeY](https://www.youtube.com/watch?v=OgiFKMd_TeY)
-- Prior art includes [Ignite Andross](https://github.com/infinitered/ignite-andross) and [Ignite Bowser](https://github.com/infinitered/ignite-bowser) (which is very similar to the current version of Ignite).
-- [Who are We?](https://infinite.red/react-native-app-development-company) - Learn More About Infinite Red, the top React Native app development company
+* Watch Jamon Holmgren's talk at React Live Amsterdam 2019 where he uses Ignite to build an app in less than 30 minutes: [https://www.youtube.com/watch?v=OgiFKMd_TeY](https://www.youtube.com/watch?v=OgiFKMd_TeY)
+* Prior art includes [Ignite Andross](https://github.com/infinitered/ignite-andross) and [Ignite Bowser](https://github.com/infinitered/ignite-bowser) (which is very similar to the current version of Ignite).
+* [Who are We?](https://infinite.red/react-native-app-development-company) - Learn More About Infinite Red, the top React Native app development company
 
 ## License and Trademark Notice
 
